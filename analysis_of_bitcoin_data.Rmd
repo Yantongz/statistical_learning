@@ -1,13 +1,12 @@
 ---
-title: "542_hw2"
-author: "Yantong Zheng"
-date: "October 4, 2017"
+title: "Analysis of bitcoin data"
+author: "YZ"
 output: word_document
 ---
 Q1
 ```{r}
 # read in, format the date column, cut last two rows
-bitcoin <- read.csv(file="C:/Users/yantongz/Desktop/542/bitcoin_dataset.csv", sep=",",  header=TRUE, colClasses=c("Date", rep("numeric", 23)), na.strings = " ")
+bitcoin <- read.csv(file="C:/Users/.../bitcoin_dataset.csv", sep=",",  header=TRUE, colClasses=c("Date", rep("numeric", 23)), na.strings = " ")
 
 bitcoin = bitcoin[1:(nrow(bitcoin)-2),]
 
@@ -122,7 +121,7 @@ BIC_log_pred_error
 ```
 Q2
 Part I
-On piazza, the instructor says we can ignore the column with missing data for question 2 as well, so I will keep using "bitcoin1" from Q1.  
+ignore the column with missing data for question 2 as well, so I will keep using "bitcoin1" from Q1.  
 Here I used the third objective function for lasso.  
 To rewrite the lasso objective function as a function of $\beta_{j}$.Let $(-j)$ represent all elements except the jth one.  
 let 
