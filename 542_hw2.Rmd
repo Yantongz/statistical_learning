@@ -1,0 +1,291 @@
+---
+title: "542_hw2"
+author: "Yantong Zheng"
+date: "October 4, 2017"
+output: word_document
+---
+Q1
+```{r}
+# read in, format the date column, cut last two rows
+bitcoin <- read.csv(file="C:/Users/yantongz/Desktop/542/bitcoin_dataset.csv", sep=",",  header=TRUE, colClasses=c("Date", rep("numeric", 23)), na.strings = " ")
+
+bitcoin = bitcoin[1:(nrow(bitcoin)-2),]
+
+# checking data completeness, ignore the column with missing data
+drop_na = colnames(bitcoin)[colSums(is.na(bitcoin)) > 0]
+bitcoin1 = bitcoin[ , !(names(bitcoin) %in% drop_na)]
+# convert the date variable into integers for later manipulation
+bitcoin1[,1] = c(1:nrow(bitcoin1))
+
+# training and testing set
+sep_idx = which(grepl("2017-01-01", bitcoin[,1]))
+end_idx = which(grepl("2017-09-12", bitcoin[,1]))
+
+training = bitcoin1[1:(sep_idx-1),]
+testing = bitcoin1[sep_idx:end_idx,]
+
+# part a
+require(leaps, quietly = TRUE)
+# the outcome variable Y is the second col in data
+RSSleaps_q1= regsubsets(as.matrix(training[,-2]),training[,2], nvmax=22)
+sum_q1 = summary(RSSleaps_q1,matrix=T)
+
+# the best subset selection models are marked with *
+result1 = t(sum_q1$which)
+result1[which(result1 == FALSE)] = ''; result1[which(result1 == TRUE)] = '*'
+( as.data.frame(result1) )
+```
+
+```{r}
+# part b
+# parameter sizes
+msizeb=apply(sum_q1$which,1,sum)
+
+# using Cp as criteria, returns a model w/ 15 predictors
+q1_Cp = sum_q1$cp
+m1 = sum_q1$which[order(q1_Cp)[1],]
+# the best model by Cp,
+Cp_model = names(which(m1==TRUE))[-1]; Cp_model
+Cp_data = testing[, c(Cp_model,"btc_market_price")]
+
+lmfit_cp =lm(btc_market_price ~ ., data= Cp_data)
+Cp_pred_error = (1/nrow(testing))*sum((lmfit_cp$fitted.values - Cp_data$btc_market_price)^2)
+# the prediction error by Cp, 
+Cp_pred_error
+
+# using AIC as criteria, returns a model w/ 15 predictors
+AIC_b = nrow(training)*log(sum_q1$rss/nrow(training)) + 2*msizeb;
+
+m2= sum_q1$which[order(AIC_b)[1],]
+AIC_model =names(which(m2==TRUE))[-1]
+# AIC_model == Cp_model
+# since AIC_model and Cp_model returns the same model, their prediction errors are the same.
+
+# using BIC as criteria, returns a model w/ 10 predictors
+q1_BIC = sum_q1$bic
+m3 = sum_q1$which[which.min(q1_BIC),]
+# the best model by BIC,
+BIC_model =names(which(m3==TRUE))[-1] ; BIC_model
+BIC_data = testing[, c(BIC_model,"btc_market_price")]
+
+lmfit_bic =lm(btc_market_price ~ ., data= BIC_data)
+BIC_pred_error = (1/nrow(testing))*sum((lmfit_bic$fitted.values - BIC_data$btc_market_price)^2)
+# the prediction error by BIC,
+BIC_pred_error
+```
+
+```{r}
+# part c
+# redo part a
+RSSleaps_q1c= regsubsets(as.matrix(training[,-2]),log1p(training[,2]), nvmax=22)
+sum_q1c = summary(RSSleaps_q1c,matrix=T)
+
+# the best subset selection models are marked with *
+result1c = t(sum_q1c$which)
+result1c[which(result1c == FALSE)] = ''; result1c[which(result1c == TRUE)] = '*'
+( as.data.frame(result1c) )
+
+# redo part b
+# using Cp as criteria, returns a model w/ 17 predictors
+q1c_Cp = sum_q1c$cp
+m1c = sum_q1c$which[order(q1c_Cp)[1],]
+# the best model by Cp,
+Cp_modelc = names(which(m1c==TRUE))[-1]; Cp_modelc
+Cp_datac = testing[, c(Cp_modelc,"btc_market_price")]
+
+lmfit_cp_log =lm(log1p(btc_market_price) ~ ., data= Cp_datac)
+# original scale of Y
+Cp_pred = exp(lmfit_cp_log$fitted.values)-1
+Cp_log_pred_error = (1/nrow(testing))*sum(( Cp_pred- Cp_data$btc_market_price)^2)
+Cp_log_pred_error
+
+# using AIC as criteria, returns a model w/ 17 predictors
+AIC_c = nrow(training)*log(sum_q1c$rss/nrow(training)) + 2*msizeb;
+
+m2c= sum_q1c$which[order(AIC_c)[1],]
+AIC_modelc =names(which(m2c==TRUE))[-1]
+# AIC_modelc == Cp_modelc
+# since AIC_modelc and Cp_modelc returns the same model, their prediction errors are the same.
+
+# using BIC as criteria, returns a model w/ 12 predictors
+q1c_BIC = sum_q1c$bic
+m3c = sum_q1c$which[which.min(q1c_BIC),]
+# the best model by BIC,
+BIC_modelc =names(which(m3c==TRUE))[-1]; BIC_modelc
+BIC_datac = testing[, c(BIC_modelc,"btc_market_price")]
+
+lmfit_bic_log =lm(log1p(btc_market_price) ~ ., data= BIC_datac)
+# original scale of Y
+BIC_pred = exp(lmfit_bic_log$fitted.values)-1
+BIC_log_pred_error = (1/nrow(testing))*sum(( BIC_pred - BIC_data$btc_market_price)^2)
+BIC_log_pred_error
+```
+Q2
+Part I
+On piazza, the instructor says we can ignore the column with missing data for question 2 as well, so I will keep using "bitcoin1" from Q1.  
+Here I used the third objective function for lasso.  
+To rewrite the lasso objective function as a function of $\beta_{j}$.Let $(-j)$ represent all elements except the jth one.  
+let 
+$$ r = y - \beta_{(-j)}x_{(-j)}-\beta_{0}\textbf{1} $$
+rewrite the lasso problem as
+$$ f(\beta) = \dfrac{1}{2n}\|r-\beta_{j}x_{j}\|_{2}^{2}+\lambda\|\beta\|_{1} $$
+$$= \dfrac{1}{2n}<r-\beta_{j}x_{j},r-\beta_{j}x_{j}> + \lambda\|\beta\|_{1} $$
+$$ = \dfrac{1}{2n}\|r\|^{2}-\dfrac{1}{n}\beta_{j}<r, x_{j}>+
+\dfrac{1}{2n}\beta_{j}^{2}\|x_{j}\|^{2} + \lambda|\beta_{(-j)}|+\lambda|\beta_{j}| $$ 
+$$ = \dfrac{1}{2n}\beta_{j}^{2}\|x_{j}\|^{2}-\dfrac{1}{n}\beta_{j}<r, x_{j}>+\lambda|\beta_{j}|+ \text{terms that don't involve } \beta_{j} $$
+```{r}
+require(MASS, quietly = TRUE)
+require(glmnet, quietly = TRUE)
+set.seed(1); N = 400; P = 20
+
+Beta = c(1:5/5, rep(0, P-5))
+Beta0 = 0.5
+
+V = matrix(0.5, P, P); diag(V) = 1
+
+X = as.matrix(mvrnorm(N, mu = 3*runif(P)-1, Sigma = V))
+
+# create artifical scale of X
+X = sweep(X, 2, 1:10/5, "*")
+
+y = Beta0 + X %*% Beta + rnorm(N)
+
+# now start the Lasso 
+
+x_center = colMeans(X); x_scale = apply(X, 2, sd)
+X2 = scale(X)
+
+bhat = rep(0, ncol(X2)) 
+
+ymean = mean(y); y2 = y - ymean
+```
+Rewrite the $f(\beta)$ function to get the soft thresholding function:  
+$$ f(\beta) = \dfrac{1}{n}\|x_{j}\|^{2}[\dfrac{1}{2}(\beta_{j}-\dfrac{<r,x_{j}>}{\|x_{j}^{2}\|})^{2}+\dfrac{\lambda n}{\|x_{j}\|^{2}}|\beta_{j}|]+ \text{terms that don't involve } \beta_{j} $$
+$$ \text{we know the solution to } min_{(x)}  \dfrac{1}{2}(x-a)^{2}+\lambda|x|  \text{ is soft_th}(a,\lambda) $$ 
+hence we have  
+$$ arg min f(\beta) = \text{soft_th}(\dfrac{<r, x_{j}>}{\|x_{j}\|^{2}}, \dfrac{\lambda n}{\|x_{j}\|^{2}})$$
+$$ = \dfrac{1}{\|x_{j}\|^{2}}\text{soft_th}(<r, x_{j}>, \lambda n)$$
+```{r}
+soft_th <- function(b, pen){
+  
+  sth <- numeric(length=length(b))
+  sth[which(b > pen)] <- b[which(b > pen)] - pen
+  sth[which(b < -pen)] <- b[which(b < -pen)] + pen
+  sth[which(b > -pen & b<pen)] = 0
+  return(sth)
+}
+
+lambda = exp(seq(log(max(abs(cov(X2, y2)))), log(0.001), length.out = 100))
+
+LassoFit <- function(myX, myY, mybeta, mylambda, tol = 1e-10, maxitr = 500)
+{
+	# a matrix to record the objective func
+	f = rep(0, maxitr); 
+
+	for (k in 1:maxitr)
+	{
+  		r = myY - myX %*% mybeta
+  		
+  		f[k] = mean(r*r)
+  		
+  		for (j in 1:ncol(myX))
+  		{
+    			# add the effect of jth var
+    			# now the resulted residual is after fitting all other variables
+    			r = r + myX[,j] * mybeta[j]
+    			
+    	    # soft thresholding func to the ols estimate of the jth var 
+    			mybeta[j] = (1/(sum(myX[,j]^2)) )*as.vector(soft_th(t(r)%*% myX[,j], length(myY)*mylambda))
+    			
+    			# remove the new effect of jth var
+    			r = r - myX[,j] * mybeta[j]
+  		}
+  		
+  		if (k > 10){
+  			  if (sum(abs(f[(k-9):k] - mean(f[(k-9):k]))) < tol) break;
+  		}
+  }
+	return (mybeta)
+}
+
+# test case
+# LassoFit(X2, y2, mybeta = rep(0, ncol(X2)), mylambda = lambda[10], tol = 1e-7, maxitr = 500)
+
+# record beta values for each lambda
+beta_all = matrix(NA, ncol(X), length(lambda))
+beta0_all = rep(NA, length(lambda))
+
+bhat = rep(0, ncol(X2)) 
+```
+Since y is centered and x is cented & scaled, the relationship between the standardized and unstandardized coefficients is:  
+$$ y-\mu(y) = \beta \dfrac{[x - \mu(x)]}{\sigma(x)} $$
+to retrieve $\beta_{0}$ :  
+$$ \beta_{0}= -[\beta * \dfrac{\mu(x)}{\sigma(x)}] + \mu(y) $$
+```{r}
+for (i in 1:length(lambda)) # loop from the largest lambda value
+{
+
+	bhat = LassoFit(X2, y2, bhat, lambda[i])
+	
+	# data is scaled, scale that back, save the correctly scaled beta
+	beta_all[, i] = bhat/x_scale
+	
+	# recalculte the intercept term in the original, uncentered and unscaled X
+	beta0_all[i] = -( bhat%*%(x_center/x_scale)) + ymean
+}
+
+# coefficient matrix, each column correspond to one lambda value 
+#rbind("intercept" = beta0_all, beta_all)
+
+# you should include a similar plot like this in your report
+matplot(colSums(abs(beta_all)), t(beta_all), type="l")
+
+# compare the result from glmnet plot
+plot(glmnet(X, y))
+```
+part II: this part takes a minute to run because the bitcoin dataset is large.
+```{r}
+# I select a lambda range that I see fit.
+
+mybtc_lambda = seq(8,12,length.out=20)
+
+# Center data
+y_centered <- training[,2] - mean(training[,2]) 
+x_scaled <- scale(training[,-2])
+
+x_cen = colMeans(training[,-2])
+x_sca = apply(training[,-2], 2, sd)
+
+# store beta values
+betas = matrix(0,length(mybtc_lambda),ncol(training[,-2]))
+beta0s = rep(0,length(mybtc_lambda))
+
+# store testing errors
+btc_test_err = rep(0, length(mybtc_lambda))
+
+beta <- rep(0,dim(training[,-2])[2])
+
+for(jj in 1:length(mybtc_lambda))
+{
+  lasso.fit <- LassoFit(as.matrix(x_scaled), as.matrix(y_centered), beta, mybtc_lambda[jj])
+
+  # original scale
+  betas[jj,] <- lasso.fit/x_sca
+
+	beta0s[jj] = -( lasso.fit%*%(x_cen/x_sca)) + mean(training[,2])
+
+	pred = as.matrix(testing[,-2])%*%betas[jj,] + beta0s[jj]
+
+  btc_test_err[jj] = mean( sum( (as.matrix(testing[,2]) - pred )^2))
+
+}
+# find the smallest test error (best model)
+model_coef = betas[which.min(btc_test_err),]
+model_pred = names(training[,-2])[which(model_coef!= 0.0)]
+# the best model is
+model_pred
+
+plot(glmnet(as.matrix(training[,-2]), training[,2]))
+
+```
+
