@@ -1,0 +1,463 @@
+---
+title: "578_hw1"
+author: "Yantong Zheng"
+date: "February 19, 2018"
+output:
+  word_document: default
+  html_document: default
+---
+
+### Part a), predict preference scores.  
+
+First load the full data set.  
+Since timestamp variable is in seconds, I changed it to normal time scale for analysis.  
+I also name the columns according to the readme file.  
+  
+Here is an overview of the data.
+
+```{r, echo=FALSE}
+full_data <- read.delim("C:/Users/yantongz/Desktop/578/hw/ml-100k/u.data", header=FALSE, stringsAsFactors=FALSE, col.names = c("user_id", "item_id", "rating", "timestamp" ))
+
+require(lubridate, quietly = TRUE)
+full_data$timestamp = as_datetime(full_data$timestamp)
+
+str(full_data)
+
+```
+  
+Now I clean up other tables for data manipulation.  
+For example, get rid of NA's and transform date format.
+
+```{r, echo=FALSE}
+require(readr, quietly = TRUE)
+
+# movie features
+
+movie_item <- read_delim("C:/Users/yantongz/Desktop/578/hw/ml-100k/u.item", "|", escape_double = FALSE, col_names = FALSE, col_types = cols(X3 = col_date(format = "%d-%b-%Y"), 
+        X4 = col_character()), trim_ws = TRUE)
+
+colnames(movie_item) = c("item_id" , "movie_title" , "release_date" , "video_rel_date" ,
+              "IMDb_URL" , "unknown" , "Action" , "Adventure" , "Animation" ,
+              "Children", "Comedy" , "Crime" , "Documentary" , "Drama" , "Fantasy" ,
+              "Film_Noir" , "Horror" , "Musical" , "Mystery" , "Romance" , "Sci_Fi" ,
+              "Thriller" , "War" , "Western")
+
+# remove NA columns
+movie_item = movie_item[,colSums(is.na(movie_item))<nrow(movie_item)]
+
+# user information
+
+user <- read_delim("C:/Users/yantongz/Desktop/578/hw/ml-100k/u.user", 
+    "|", escape_double = FALSE, col_names = FALSE, trim_ws = TRUE)
+
+colnames( user) = c("user_id", "age", "gender", "occupation", "zip_code")
+
+# treat weird zip codes as empty's
+
+weird_zipcode = which(is.na(as.numeric(user$zip_code)) )
+
+user$zip_code[weird_zipcode] = ""
+user$zip_code = as.numeric(user$zip_code)
+
+```
+
+## 5 fold cross validation  
+I am using random forest to predict user preference score.  
+```{r, echo=FALSE}
+# read in all sub sets
+data_folder <- "C:/Users/yantongz/Desktop/578/hw/ml-100k"
+
+dataset_files <- c("u1", "u2", "u3", "u4", "u5")
+suffix1 <- ".base"
+suffix2 <- ".test"
+
+# for training sets
+
+for (f in dataset_files) {
+  f_name = paste0(f, suffix1)
+  path <- file.path(data_folder, f_name)
+  assign(f_name, read_delim(path, "\t", escape_double = FALSE, col_names = FALSE, trim_ws = TRUE))
+  
+  df <- get(f_name)
+  colnames(df) <- c("user_id", "item_id", "rating", "timestamp" )
+  df$timestamp = as_datetime((df$timestamp))
+  
+}
+
+# after assigning values to iterator, use get() and reassign to ideal data structure. 
+
+# for test sets
+
+for (f in dataset_files) {
+  f_name = paste0(f, suffix2)
+  path <- file.path(data_folder, f_name)
+  assign(f_name, read_delim(path, "\t", escape_double = FALSE, col_names = FALSE, trim_ws = TRUE))
+  
+  df <- get(f_name)
+  colnames(df) <- c("user_id", "item_id", "rating", "timestamp" )
+  df$timestamp = as_datetime((df$timestamp))
+  
+}
+
+
+# cal CV
+rmse = vector(length = 5)
+
+require(randomForest, quietly = TRUE)
+require(recommenderlab, quietly = TRUE)
+
+colnames(u1.base)= c("user_id", "item_id", "rating", "timestamp" )
+colnames(u1.test)= c("user_id", "item_id", "rating", "timestamp" )
+
+colnames(u2.base)= c("user_id", "item_id", "rating", "timestamp" )
+colnames(u2.test)= c("user_id", "item_id", "rating", "timestamp" )
+
+colnames(u3.base)= c("user_id", "item_id", "rating", "timestamp" )
+colnames(u3.test)= c("user_id", "item_id", "rating", "timestamp" )
+
+colnames(u4.base)= c("user_id", "item_id", "rating", "timestamp" )
+colnames(u4.test)= c("user_id", "item_id", "rating", "timestamp" )
+
+colnames(u5.base)= c("user_id", "item_id", "rating", "timestamp" )
+colnames(u5.test)= c("user_id", "item_id", "rating", "timestamp" )
+
+# u1
+# train
+merge1_base = Reduce(function(x, y) merge(x, y), 
+                 list(u1.base, movie_item, user))
+
+merge1 = na.omit(merge1_base)
+
+u1_x = merge1[ , -which(names(merge1) %in% c("rating"))]
+
+fac_var = c(27:28) # 7:25, 
+
+for (ii in fac_var){
+  u1_x[[ii]] = as.factor(u1_x[[ii]])
+}
+
+u1_x$movie_title = NULL
+u1_x$IMDb_URL = NULL
+
+# test
+
+merge1_test = Reduce(function(x, y) merge(x, y), 
+                 list(u1.test, movie_item, user))
+
+merge1t = na.omit(merge1_test)
+
+u1t_x = merge1t[ , -which(names(merge1t) %in% c("rating"))]
+
+for (jj in fac_var){
+  u1t_x[[jj]] = as.factor(u1t_x[[jj]])
+}
+
+
+u1t_x$movie_title = NULL
+u1t_x$IMDb_URL = NULL
+
+rf.fit1 = randomForest(u1_x, as.factor(merge1$rating), ntree = 100, mtry = 6)
+pred1 = predict(rf.fit1, u1t_x, type = "response")
+
+rmse[1] = RMSE(as.numeric(merge1t$rating), as.numeric(pred1))
+
+```
+
+
+```{r, echo=FALSE}
+# u2
+# train
+merge2_base = Reduce(function(x, y) merge(x, y), 
+                 list(u2.base, movie_item, user))
+
+merge2 = na.omit(merge2_base)
+
+u2_x = merge2[ , -which(names(merge2) %in% c("rating"))]
+
+fac_var = c(27:28) # 7:25, 
+
+for (ii2 in fac_var){
+  u2_x[[ii2]] = as.factor(u2_x[[ii2]])
+}
+
+u2_x$movie_title = NULL
+u2_x$IMDb_URL = NULL
+
+# test
+
+merge2_test = Reduce(function(x, y) merge(x, y), 
+                 list(u2.test, movie_item, user))
+
+merge2t = na.omit(merge2_test)
+
+u2t_x = merge2t[ , -which(names(merge2t) %in% c("rating"))]
+
+for (jj2 in fac_var){
+  u2t_x[[jj2]] = as.factor(u2t_x[[jj2]])
+}
+
+
+u2t_x$movie_title = NULL
+u2t_x$IMDb_URL = NULL
+
+rf.fit2 = randomForest(u2_x, as.factor(merge2$rating), ntree = 100, mtry = 6)
+pred2 = predict(rf.fit2, u2t_x, type = "response")
+
+rmse[2] = RMSE(as.numeric(merge2t$rating), as.numeric(pred2))
+
+
+```
+
+```{r, echo=FALSE}
+# u3
+# train
+merge3_base = Reduce(function(x, y) merge(x, y), 
+                 list(u3.base, movie_item, user))
+
+merge3 = na.omit(merge3_base)
+
+u3_x = merge3[ , -which(names(merge3) %in% c("rating"))]
+
+fac_var = c(27:28) # 7:25, 
+
+for (ii3 in fac_var){
+  u3_x[[ii3]] = as.factor(u3_x[[ii3]])
+}
+
+u3_x$movie_title = NULL
+u3_x$IMDb_URL = NULL
+
+# test
+
+merge3_test = Reduce(function(x, y) merge(x, y), 
+                 list(u3.test, movie_item, user))
+
+merge3t = na.omit(merge3_test)
+
+u3t_x = merge3t[ , -which(names(merge3t) %in% c("rating"))]
+
+for (jj3 in fac_var){
+  u3t_x[[jj3]] = as.factor(u3t_x[[jj3]])
+}
+
+
+u3t_x$movie_title = NULL
+u3t_x$IMDb_URL = NULL
+
+rf.fit3 = randomForest(u3_x, as.factor(merge3$rating), ntree = 100, mtry = 6)
+pred3 = predict(rf.fit3, u3t_x, type = "response")
+
+rmse[3] = RMSE(as.numeric(merge3t$rating), as.numeric(pred3))
+
+
+```
+
+```{r, echo=FALSE}
+# u4
+# train
+merge4_base = Reduce(function(x, y) merge(x, y), 
+                 list(u4.base, movie_item, user))
+
+merge4 = na.omit(merge4_base)
+
+u4_x = merge4[ , -which(names(merge4) %in% c("rating"))]
+
+fac_var = c(27:28) # 7:25, 
+
+for (ii4 in fac_var){
+  u4_x[[ii4]] = as.factor(u4_x[[ii4]])
+}
+
+u4_x$movie_title = NULL
+u4_x$IMDb_URL = NULL
+
+# test
+
+merge4_test = Reduce(function(x, y) merge(x, y), 
+                 list(u4.test, movie_item, user))
+
+merge4t = na.omit(merge4_test)
+
+u4t_x = merge4t[ , -which(names(merge4t) %in% c("rating"))]
+
+for (jj4 in fac_var){
+  u4t_x[[jj4]] = as.factor(u4t_x[[jj4]])
+}
+
+
+u4t_x$movie_title = NULL
+u4t_x$IMDb_URL = NULL
+
+rf.fit4 = randomForest(u4_x, as.factor(merge4$rating), ntree = 100, mtry = 6)
+pred4 = predict(rf.fit4, u4t_x, type = "response")
+
+rmse[4] = RMSE(as.numeric(merge4t$rating), as.numeric(pred4))
+
+
+```
+
+
+```{r, echo=FALSE}
+# u5
+# train
+merge5_base = Reduce(function(x, y) merge(x, y), 
+                 list(u5.base, movie_item, user))
+
+merge5 = na.omit(merge5_base)
+
+u5_x = merge5[ , -which(names(merge5) %in% c("rating"))]
+
+fac_var = c(27:28) # 7:25, 
+
+for (ii5 in fac_var){
+  u5_x[[ii5]] = as.factor(u5_x[[ii5]])
+}
+
+u5_x$movie_title = NULL
+u5_x$IMDb_URL = NULL
+
+# test
+
+merge5_test = Reduce(function(x, y) merge(x, y), 
+                 list(u5.test, movie_item, user))
+
+merge5t = na.omit(merge5_test)
+
+u5t_x = merge5t[ , -which(names(merge5t) %in% c("rating"))]
+
+for (jj5 in fac_var){
+  u5t_x[[jj5]] = as.factor(u5t_x[[jj5]])
+}
+
+
+u5t_x$movie_title = NULL
+u5t_x$IMDb_URL = NULL
+
+rf.fit5 = randomForest(u5_x, as.factor(merge5$rating), ntree = 100, mtry = 6)
+pred5 = predict(rf.fit5, u5t_x, type = "response")
+
+rmse[5] = RMSE(as.numeric(merge5t$rating), as.numeric(pred5))
+
+avg_rmse = mean(rmse)
+
+print("The RMSE from each fold is ,")
+
+rmse
+
+print("he average RMSE is ")
+avg_rmse
+
+```
+ 
+
+
+```{r, eval=FALSE, echo=FALSE}
+
+#later... y rf and caret don't work
+
+# combine the tables by user ID and item ID
+
+train_y = as.factor(full_data$rating)
+train_x = Reduce(function(x, y) merge(x, y, all=TRUE), 
+                 list(full_data, movie_item, user))
+# head(train_x[complete.cases(train_x), ])
+
+# get rid of variables for prediction, like URL and ratings
+train_x$IMDb_URL = NULL
+train_x$rating = NULL
+
+# clean up the predictor types
+# sapply(train_x, class)
+fac_var = c(8:26, 28:29)
+
+for (ii in fac_var){
+  train_x[[ii]] = as.factor(train_x[[ii]])
+}
+
+train_y = train_y[complete.cases(train_x)]
+train_x = train_x[complete.cases(train_x),]
+
+require(randomForest, quietly = TRUE)
+require(caret, quietly = TRUE)
+
+# param
+mtry <- as.integer(sqrt(ncol(train_x)))
+tunegrid <- expand.grid(.mtry=mtry)
+
+# tunegrid <- expand.grid(.mtry=c(mtry:mtry+20))
+rf_default = matrix() 
+rf_default <- train(as.factor(rating)~., data = train_x, method="rf", metric= "Accuracy", tuneGrid=tunegrid, trControl=trainControl(method="cv",number=5), na.action = na.exclude)
+
+# error: can not allocate big size
+
+
+```
+
+
+### Part b), Missing patterns  
+After exploring the data by the features, the missing pattern are mostly very sparse and seemed uncorrelated, except for one : occupation.  
+
+```{r}
+total = Reduce(function(x, y) merge(x, y), 
+                 list(full_data, movie_item, user))
+
+occu_genr = data.frame(cbind(table(total$occupation, total$unknown),
+                         table(total$occupation,total$Action) ,
+                         table(total$occupation, total$Adventure),
+                         table(total$occupation,total$Animation), 
+                         table(total$occupation,total$Children), 
+                         table(total$occupation,total$Comedy), 
+                         table(total$occupation,total$Crime), 
+                         table(total$occupation,total$Documentary), 
+                         table(total$occupation,total$Drama), 
+                         table(total$occupation,total$Fantasy), 
+                         table(total$occupation, total$Film_Noir), 
+                         table(total$occupation,total$Horror), 
+                         table(total$occupation,total$Musical), 
+                         table(total$occupation,total$Mystery) , 
+                         table(total$occupation,total$Romance), 
+                         table(total$occupation,total$Sci_Fi) , 
+                         table(total$occupation,total$Thriller), 
+                         table(total$occupation,total$War) , 
+                         table(total$occupation,total$Western )))
+
+genr = colnames(movie_item)[5:23]
+n = vector(length = 38)
+
+for (nn in 0:18){
+  
+  n[2*nn+1]= paste0("NW", genr[nn+1])
+  n[2*nn+2] = paste0("W", genr[nn+1])
+}
+
+colnames(occu_genr) = n
+
+heatmap(t(as.matrix(occu_genr)))
+```
+We can see from the heatmap about the missing rating patterns between jobs and genre:  
+1, a severe outlier occupation, student.  
+These missing values probably stems from the fact that students didn't go to the theatre as much as adults at that time.  
+2, some occupations had more missing values compared to the majority, such as writer, educator, administrator, programmer and others.  
+
+
+### Part 3) Demonstrate the model performance can be enhanced by getting values in missing patterns.  
+  
+From the available data, we know that we get both  information from the item themselves and from user, hence I believe the recommendation system will be more accurate if I do a combination of Item-based collaborative filtering with User-based.  
+  
+The collaborative filtering in this case is, suppose we have a new user, we need to look into the user's past items records and recommend similar items.  
+  
+It involves (in general) the following steps:  
+  
+1, come up with a fair way to measure the similarities between any two items, the similarities between any two users, the calculations should involve all their features with corresponding weights;  
+  
+2, given two items, calculate their similarities using (consistently) the formula in step 1; do the same for any two given users;  
+  
+3, for each item, find the items that have highest similarities scores with it (exhaustive search); do the same for each user;  
+  
+4, sort the list of items, in decreasing order of their similarities scores; from the top n items, find the items that were rated high by users that have high user similarity scores, recommend the top k items to the new user.  
+
+Reasoning: we only have a few user features, and I already show their missing pattern is highly related to occupation, this means incorporating occupation information is critical in calculating user similarity scores, therefore improving model performance.  
+
+
+
+

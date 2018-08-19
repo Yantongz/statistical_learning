@@ -1,0 +1,188 @@
+---
+title: "Churn user prediction using artificial neural network"
+author: "Yantong Zheng"
+output: word_document
+---
+
+Customer churn means some users stopped their activities after some time. Churn users is a costly problem for nearly all companies, but if we can predict this population and do something before they move on to new companies, we will make a lot more profits in the long run.  
+  
+The data set I use is (a sample of ) Uber churn user data in 2014. Here's an overview of the data:  
+  
+```{r, echo=FALSE}
+library(readr)
+uber_churn <- read_csv("C:/Users/yantongz/Desktop/578/hw/churn.txt")
+
+head(uber_churn, 10)
+
+# str(uber_churn)
+```
+The target variable is “churn” and other variables are  predictors.  
+
+
+```{r, echo=FALSE}
+library(keras)
+library(rsample)
+
+# Split test and training sets
+# set seed for reproducibility
+
+set.seed(1120)
+train_test_split <- initial_split(uber_churn, prop = 0.8)
+train_test_split
+
+train_set <- training(train_test_split)
+test_set  <- testing(train_test_split) 
+
+```
+
+For preprocessing the data set, I use recipes package to do one-hot encoding, scaling and centering. This will make it easier to fit model later.  
+
+```{r, echo=FALSE}
+library(recipes)
+
+# Create recipe
+rec_obj <- recipe(churn ~ ., data = train_set) %>%
+  step_center(all_predictors(), -all_outcomes()) %>%
+  step_scale(all_predictors(), -all_outcomes()) %>%
+  prep(data = train_set)
+
+# Print the recipe object
+rec_obj
+
+# Predictors
+x_train <- bake(rec_obj, newdata = train_set) %>% select(-churn)
+x_test  <- bake(rec_obj, newdata = test_set) %>% select(-churn)
+
+# Response variables for training and testing sets
+y_train <- train_set$churn
+y_test  <- test_set$churn
+
+```
+
+##### Model Customer Churn With Keras (Deep Learning)  
+  
+I will build a 3 layers model Multi-Layer Perceptron, it can be used for binary (multi-level) classification.  
+  
+I used uniform to initialize the three layers, and used rectified linear unit as activation for the first two layers, used sigmoid as activation for the last layer for final classification.  
+  
+The target variable is logical, so I used binary entropy loss for computing loss function.  
+
+```{r, echo=FALSE}
+# Building our Artificial Neural Network
+model_keras <- keras_model_sequential()
+
+model_keras %>% 
+  
+  # First hidden layer
+  layer_dense(
+    units              = 16, 
+    kernel_initializer = "uniform", 
+    activation         = "relu", 
+    input_shape        = ncol(x_train)) %>% 
+  
+  # Dropout to prevent overfitting
+  layer_dropout(rate = 0.1) %>%
+  
+  # Second hidden layer
+  layer_dense(
+    units              = 16, 
+    kernel_initializer = "uniform", 
+    activation         = "relu") %>% 
+  
+  # Dropout to prevent overfitting
+  layer_dropout(rate = 0.1) %>%
+  
+  # Output layer
+  layer_dense(
+    units              = 1, 
+    kernel_initializer = "uniform", 
+    activation         = "sigmoid") %>% 
+  
+  # Compile ANN
+  compile(
+    optimizer = 'adam',
+    loss      = 'binary_crossentropy',
+    metrics   = c('accuracy')
+  )
+
+keras_model
+
+```
+
+```{r, echo=FALSE}
+# Fit the keras model to the training data
+nn_fit <- fit(
+  object           = model_keras, 
+  x                = as.matrix(x_train), 
+  y                = y_train,
+  batch_size       = 50, 
+  epochs           = 25,
+  validation_split = 0.30
+)
+
+# Plot the training/validation history of our Keras model
+plot(nn_fit) 
+```
+
+When fitting the model to training data:  
+
+CNN is known to overfit the data, and I initially thought this dataset does not have many predictors, it might make the overfitting problem even worse.  
+But from the loss and accuracy plot above, it seems like I don't have overfiting problem (for now).  
+  
+I have tune the following parameters:  
+units in layers: 16, 32, 64  
+drop rate: 0.05, 0.1, 0.2  
+batch size: 30, 50, 100, 150  
+epochs: 25, 30, 35  
+  
+  
+The loss is around 0.5 given small changes to parameters like the dropout rate, the number of units in each layer, batch size and number of epochs. This range of loss is commen in the prediction of binary outcome (based on my previous coursework and projects).  
+
+
+
+##### MAKING PREDICTIONS  
+```{r, echo=FALSE}
+# Predicted Class
+yhat_keras_class_vec <- predict_classes(object = model_keras, x = as.matrix(x_test)) %>%
+    as.vector()
+
+# Predicted Class Probability
+yhat_keras_prob_vec  <- predict_proba(object = model_keras, x = as.matrix(x_test)) %>%
+    as.vector()
+
+library(yardstick)
+library(forcats)
+
+# Format test data and predictions for yardstick metrics
+est_nn <- tibble(
+  truth      = as.factor(y_test) %>% fct_recode(yes = "1", no = "0"),
+  estimate   = as.factor(yhat_keras_class_vec) %>% fct_recode(yes = "1", no = "0"),
+  class_prob = yhat_keras_prob_vec
+)
+
+est_nn
+
+# As pointed out, the default is to classify 0 as the positive class instead of 1.
+
+options(yardstick.event_first = FALSE)
+
+```
+
+### Model performance  
+For measuring model performance, I use yardstick's tidy methods.  
+
+##### Confusion table and Accuracy and AUC
+```{r, echo=FALSE}
+est_nn %>% conf_mat(truth, estimate)
+
+est_nn %>% metrics(truth, estimate)
+
+est_nn %>% roc_auc(truth, class_prob)
+
+```
+
+The misclassification rate in the table above indicates not ideal model performance in terms of sensitivity and specificity; but the overall accuracy is around 78%, and the Area Under Curve is 0.838, compare to randomly guessing (AUC_random = 0.50), this model is pretty useful.
+  
+
+
+
