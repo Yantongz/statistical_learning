@@ -1,6 +1,6 @@
 ---
 title: "Churn user prediction using artificial neural network"
-author: "Yantong Zheng"
+author: "YZ"
 output: word_document
 ---
 
@@ -10,7 +10,7 @@ The data set I use is (a sample of ) Uber churn user data in 2014. Here's an ove
   
 ```{r, echo=FALSE}
 library(readr)
-uber_churn <- read_csv("C:/Users/yantongz/Desktop/578/hw/churn.txt")
+uber_churn <- read_csv("C:/Users/.../churn.txt")
 
 head(uber_churn, 10)
 
